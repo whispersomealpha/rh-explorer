@@ -55,6 +55,10 @@ export async function getHolderList(tokenAddress: string): Promise<{
   const totalSupplyFormatted = tokenInfo.totalSupplyFormatted
 
   const holders: TokenHolder[] = rawHolders.map((h: any, i: number) => {
+    // Handle both V1 (address string) and V2 (address.hash object) formats
+    const addr = typeof h.address === 'string'
+      ? h.address
+      : (h.address?.hash ?? '')
     const balance = h.value ?? h.balance ?? '0'
     const balanceFormatted = parseFloat(ethers.formatUnits(balance, decimals))
     const share = totalSupplyFormatted > 0
@@ -62,12 +66,12 @@ export async function getHolderList(tokenAddress: string): Promise<{
       : 0
 
     return {
-      address: h.address?.hash ?? h.address,
+      address: addr,
       balance,
       balanceFormatted,
       share: parseFloat(share.toFixed(4)),
       rank: i + 1,
-      label: getAddressLabel(h.address?.hash ?? h.address),
+      label: getAddressLabel(addr),
     }
   })
 

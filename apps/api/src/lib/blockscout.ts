@@ -63,34 +63,79 @@ export async function getToken(addr: string) {
   return data
 }
 
-export async function getTokenHolders(addr: string, page = 1) {
-  const { data } = await http.get(`/tokens/${addr}/holders`, {
-    params: { page, limit: 50 }
-  })
+// V2 single page (cursor-based)
+export async function getTokenHolders(addr: string, nextPageParams?: any) {
+  const params: any = { limit: 50 }
+  if (nextPageParams) Object.assign(params, nextPageParams)
+  const { data } = await http.get(`/tokens/${addr}/holders`, { params })
   return data
 }
 
-export async function getAllTokenHolders(addr: string) {
-  const holders: any[] = []
-  let page = 1
-  let hasMore = true
+// V1 fallback — uses classic page/offset pagination, much more reliable
+export async function getTokenHoldersV1(addr: string, page = 1): Promise<any[]> {
+  const { data } = await axios.get(V1, {
+    params: {
+      module: 'token',
+      action: 'getTokenHolders',
+      contractaddress: addr,
+      page,
+      offset: 50,
+    },
+    timeout: 15000,
+  })
+  if (data.status === '1') return data.result ?? []
+  return []
+}
 
-  while (hasMore) {
-    const data = await getTokenHolders(addr, page)
+// Fetch ALL holders — tries v2 cursor pagination first, falls back to v1
+export async function getAllTokenHolders(addr: string): Promise<any[]> {
+  // Try V1 first — it's more reliable for pagination
+  try {
+    const holders: any[] = []
+    let page = 1
+    let hasMore = true
+
+    while (hasMore) {
+      const items = await getTokenHoldersV1(addr, page)
+      if (items.length === 0) { hasMore = false; break }
+      holders.push(...items)
+      if (items.length < 50) { hasMore = false; break }
+      page++
+      if (page > 200) break // cap at 10k holders
+      await new Promise(r => setTimeout(r, 100))
+    }
+
+    if (holders.length > 0) return normalizeV1Holders(holders)
+  } catch (e) {
+    console.log('V1 holders failed, trying V2:', e)
+  }
+
+  // V2 cursor-based fallback
+  const holders: any[] = []
+  let nextPageParams: any = undefined
+  let iterations = 0
+
+  while (true) {
+    const data = await getTokenHolders(addr, nextPageParams)
     const items = data.items ?? []
     holders.push(...items)
 
-    // Blockscout paginates with next_page_params
-    hasMore = !!data.next_page_params && items.length > 0
-    page++
-
-    // Safety cap — don't infinite loop on massive tokens
-    if (page > 100) break
-    // Small delay to be polite to the API
+    if (!data.next_page_params || items.length === 0) break
+    nextPageParams = data.next_page_params
+    iterations++
+    if (iterations > 100) break
     await new Promise(r => setTimeout(r, 150))
   }
 
   return holders
+}
+
+// Normalize V1 response shape to match V2
+function normalizeV1Holders(holders: any[]) {
+  return holders.map((h: any) => ({
+    address: { hash: h.address },
+    value: h.value,
+  }))
 }
 
 export async function getTokenTransfers(addr: string, page = 1) {
