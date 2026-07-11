@@ -6,9 +6,8 @@ const RH_RPC = ALCHEMY_KEY
   ? `https://robinhood-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`
   : 'https://rpc.mainnet.chain.robinhood.com'
 
-// Simple HTTP provider — no WebSocket, no persistent connection
 export const rhProvider = new ethers.JsonRpcProvider(RH_RPC, undefined, {
-  staticNetwork: true, // skip eth_chainId call on startup
+  staticNetwork: true,
 })
 
 const _chainProviders = new Map<number, ethers.JsonRpcProvider>()
