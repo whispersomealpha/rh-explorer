@@ -3,7 +3,8 @@ import axios from 'axios'
 const BASE = 'https://robinhoodchain.blockscout.com/api/v2'
 const V1   = 'https://robinhoodchain.blockscout.com/api'
 
-const http = axios.create({ baseURL: BASE, timeout: 15000 })
+const http = axios.create({ baseURL: BASE, timeout: 20000 })
+const v1   = axios.create({ baseURL: V1,   timeout: 20000 })
 
 // ── Blocks ────────────────────────────────────────────────────────────────────
 export async function getLatestBlocks(limit = 10) {
@@ -57,90 +58,157 @@ export async function getAddressTokenTransfers(addr: string, tokenAddr?: string,
   return data
 }
 
-// ── Token / Holders ───────────────────────────────────────────────────────────
+// ── Token ─────────────────────────────────────────────────────────────────────
 export async function getToken(addr: string) {
   const { data } = await http.get(`/tokens/${addr}`)
   return data
 }
 
-// V2 single page (cursor-based)
-export async function getTokenHolders(addr: string, nextPageParams?: any) {
-  const params: any = { limit: 50 }
-  if (nextPageParams) Object.assign(params, nextPageParams)
-  const { data } = await http.get(`/tokens/${addr}/holders`, { params })
+export async function getTokenTransfers(addr: string, page = 1) {
+  const { data } = await http.get(`/tokens/${addr}/transfers`, {
+    params: { page, limit: 50 }
+  })
   return data
 }
 
-// V1 fallback — uses classic page/offset pagination, much more reliable
-export async function getTokenHoldersV1(addr: string, page = 1): Promise<any[]> {
-  const { data } = await axios.get(V1, {
-    params: {
-      module: 'token',
-      action: 'getTokenHolders',
-      contractaddress: addr,
-      page,
-      offset: 50,
-    },
-    timeout: 15000,
-  })
-  if (data.status === '1') return data.result ?? []
-  return []
-}
+// ── Holders — multi-strategy fetcher ─────────────────────────────────────────
+// Strategy 1: Blockscout v2 cursor-based pagination
+async function fetchHoldersV2(addr: string): Promise<any[]> {
+  const holders: any[] = []
+  let nextParams: any = null
+  let loops = 0
 
-// Fetch ALL holders — tries v2 cursor pagination first, falls back to v1
-export async function getAllTokenHolders(addr: string): Promise<any[]> {
-  // Try V1 first — it's more reliable for pagination
-  try {
-    const holders: any[] = []
-    let page = 1
-    let hasMore = true
+  while (loops < 200) {
+    const params: any = { limit: 50 }
+    if (nextParams) Object.assign(params, nextParams)
 
-    while (hasMore) {
-      const items = await getTokenHoldersV1(addr, page)
-      if (items.length === 0) { hasMore = false; break }
-      holders.push(...items)
-      if (items.length < 50) { hasMore = false; break }
-      page++
-      if (page > 200) break // cap at 10k holders
-      await new Promise(r => setTimeout(r, 100))
+    const { data } = await http.get(`/tokens/${addr}/holders`, { params })
+    const items: any[] = data.items ?? []
+
+    for (const h of items) {
+      holders.push({
+        address: h.address?.hash ?? h.address ?? '',
+        value: h.value ?? '0',
+      })
     }
 
-    if (holders.length > 0) return normalizeV1Holders(holders)
-  } catch (e) {
-    console.log('V1 holders failed, trying V2:', e)
-  }
-
-  // V2 cursor-based fallback
-  const holders: any[] = []
-  let nextPageParams: any = undefined
-  let iterations = 0
-
-  while (true) {
-    const data = await getTokenHolders(addr, nextPageParams)
-    const items = data.items ?? []
-    holders.push(...items)
-
     if (!data.next_page_params || items.length === 0) break
-    nextPageParams = data.next_page_params
-    iterations++
-    if (iterations > 100) break
-    await new Promise(r => setTimeout(r, 150))
+    nextParams = data.next_page_params
+    loops++
+    await sleep(120)
   }
 
   return holders
 }
 
-// Normalize V1 response shape to match V2
-function normalizeV1Holders(holders: any[]) {
-  return holders.map((h: any) => ({
-    address: { hash: h.address },
-    value: h.value,
-  }))
+// Strategy 2: Blockscout v1 Etherscan-compatible API
+async function fetchHoldersV1(addr: string): Promise<any[]> {
+  const holders: any[] = []
+  let page = 1
+
+  while (page <= 200) {
+    const { data } = await v1.get('', {
+      params: {
+        module: 'token',
+        action: 'getTokenHolders',
+        contractaddress: addr,
+        page,
+        offset: 50,
+      },
+    })
+
+    if (data.status !== '1' || !Array.isArray(data.result) || data.result.length === 0) break
+
+    for (const h of data.result) {
+      holders.push({
+        address: h.address ?? '',
+        value: h.value ?? '0',
+      })
+    }
+
+    if (data.result.length < 50) break
+    page++
+    await sleep(100)
+  }
+
+  return holders
 }
 
-export async function getTokenTransfers(addr: string, page = 1) {
-  const { data } = await http.get(`/tokens/${addr}/transfers`, {
-    params: { page, limit: 50 }
+// Strategy 3: Scrape via v2 token transfers — derive unique holders
+async function fetchHoldersFromTransfers(addr: string): Promise<any[]> {
+  const balances: Record<string, bigint> = {}
+  let nextParams: any = null
+  let loops = 0
+
+  while (loops < 50) {
+    const params: any = { limit: 50 }
+    if (nextParams) Object.assign(params, nextParams)
+
+    const { data } = await http.get(`/tokens/${addr}/transfers`, { params })
+    const items: any[] = data.items ?? []
+
+    for (const tx of items) {
+      const from = tx.from?.hash?.toLowerCase()
+      const to   = tx.to?.hash?.toLowerCase()
+      const val  = BigInt(tx.total?.value ?? '0')
+      if (from) balances[from] = (balances[from] ?? BigInt(0)) - val
+      if (to)   balances[to]   = (balances[to]   ?? BigInt(0)) + val
+    }
+
+    if (!data.next_page_params || items.length === 0) break
+    nextParams = data.next_page_params
+    loops++
+    await sleep(100)
+  }
+
+  return Object.entries(balances)
+    .filter(([, v]) => v > BigInt(0))
+    .sort(([, a], [, b]) => (a > b ? -1 : 1))
+    .map(([address, value]) => ({ address, value: value.toString() }))
+}
+
+export async function getAllTokenHolders(addr: string): Promise<any[]> {
+  // Try v1 first — most reliable pagination
+  try {
+    console.log(`[holders] trying v1 for ${addr}`)
+    const v1holders = await fetchHoldersV1(addr)
+    if (v1holders.length > 0) {
+      console.log(`[holders] v1 returned ${v1holders.length} holders`)
+      return v1holders
+    }
+  } catch (e) {
+    console.error('[holders] v1 failed:', e)
+  }
+
+  // Try v2 cursor pagination
+  try {
+    console.log(`[holders] trying v2 for ${addr}`)
+    const v2holders = await fetchHoldersV2(addr)
+    if (v2holders.length > 0) {
+      console.log(`[holders] v2 returned ${v2holders.length} holders`)
+      return v2holders
+    }
+  } catch (e) {
+    console.error('[holders] v2 failed:', e)
+  }
+
+  // Last resort: derive from transfers
+  try {
+    console.log(`[holders] deriving from transfers for ${addr}`)
+    const derived = await fetchHoldersFromTransfers(addr)
+    console.log(`[holders] derived ${derived.length} holders from transfers`)
+    return derived
+  } catch (e) {
+    console.error('[holders] transfer derivation failed:', e)
+  }
+
+  return []
+}
+
+// Single page for route handler
+export async function getTokenHolders(addr: string, page = 1) {
+  const { data } = await http.get(`/tokens/${addr}/holders`, {
+    params: { limit: 50 }
   })
   return data
 }
@@ -151,11 +219,7 @@ export async function search(q: string) {
   return data.items ?? []
 }
 
-// ── Network stats (v1 endpoint) ───────────────────────────────────────────────
-export async function getStats() {
-  const { data } = await axios.get(V1, {
-    params: { module: 'stats', action: 'ethsupply' },
-    timeout: 10000
-  })
-  return data
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function sleep(ms: number) {
+  return new Promise(r => setTimeout(r, ms))
 }
