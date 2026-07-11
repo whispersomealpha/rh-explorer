@@ -81,27 +81,30 @@ export default function TokenPage({ params }: { params: { address: string } }) {
         priceCache.set(addr, price)
       }
 
-      // Phase 2: holders + transfers in parallel
-      const [holdersRes, txRes] = await Promise.allSettled([
-        api.getTokenHolders(address),
-        api.getTokenTransfers(address),
-      ])
+      // Phase 2a: holders (required)
+      let holdersRes: any = null
+      try {
+        holdersRes = await api.getTokenHolders(address)
+      } catch(e) { console.error('holders failed', e) }
 
       if (cancelled) return
       clearInterval(msgTimer.current)
 
-      const h   = holdersRes.status === 'fulfilled' ? (holdersRes.value?.holders ?? []) : []
-      const t   = txRes.status === 'fulfilled'      ? (txRes.value?.items ?? [])        : []
-      const ti2 = holdersRes.status === 'fulfilled' ? holdersRes.value?.tokenInfo       : null
+      const h   = holdersRes?.holders ?? []
+      const ti2 = holdersRes?.tokenInfo ?? null
 
       if (ti2) setTokenInfo((prev: any) => ({ ...prev, ...ti2 }))
       setHolders(h)
-      setTransfers(t)
       setLoadingHolders(false)
 
-      pageCache.set(addr, { tokenInfo: ti2 ?? info, holders: h, transfers: t, ts: Date.now() })
+      // Phase 2b: transfers (non-blocking, failure is OK)
+      api.getTokenTransfers(address).then((txRes: any) => {
+        if (!cancelled) setTransfers(txRes?.items ?? [])
+      }).catch(() => {})
 
-      // Phase 3: auto-load PnL for first 50 holders
+      pageCache.set(addr, { tokenInfo: ti2 ?? info, holders: h, transfers: [], ts: Date.now() })
+
+      // Phase 3: PnL for first 50 — fires immediately after holders load
       if (h.length > 0) {
         const decimals = parseInt(ti2?.decimals ?? info?.decimals ?? '18')
         setLoadingPnL(true)
