@@ -29,6 +29,14 @@ export default function WalletPage({ params }: { params: { address: string } }) 
   const contextBalance = searchParams.get('balance')
   const contextSymbol = searchParams.get('symbol')
 
+  // Auto-switch to token-transfers tab if coming from a token holder list
+  useEffect(() => {
+    if (contextToken) {
+      setTab('token-transfers')
+      setTokenFilter(contextSymbol ?? contextToken)
+    }
+  }, [contextToken, contextSymbol])
+
   // Load wallet profile (ETH balance, funding info, cross-chain)
   useEffect(() => {
     setLoading(true)
@@ -182,28 +190,11 @@ export default function WalletPage({ params }: { params: { address: string } }) 
 
         {/* Back button */}
         <div className="mb-3">
-          <button onClick={() => router.back()}
+          <button onClick={() => window.history.back()}
             className="text-xs text-rh-muted hover:text-rh-accent transition-colors">
             ← Back
           </button>
         </div>
-
-      {/* Token context banner — shown when coming from a token holder list */}
-      {contextToken && contextBalance && (
-        <div className="mt-3 px-4 py-2 rounded-lg bg-rh-accent/10 border border-rh-accent/30 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-rh-muted">Holding</span>
-            <span className="font-bold text-rh-text mono">
-              {parseFloat(contextBalance).toLocaleString(undefined, {maximumFractionDigits: 4})}
-            </span>
-            <span className="badge badge-purple">{contextSymbol ?? contextToken}</span>
-          </div>
-          <button onClick={() => { setTab('token-transfers'); setTokenFilter(contextSymbol ?? contextToken ?? '') }}
-            className="text-xs text-rh-accent hover:underline">
-            View {contextSymbol} transfers →
-          </button>
-        </div>
-      )}
 
       {/* Funding source pill */}
         {rh?.fundedBy && (

@@ -23,7 +23,7 @@ export default function TxPage({ params }: { params: { hash: string } }) {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Back button */}
-      <button onClick={() => router.back()}
+      <button onClick={() => window.history.back()}
         className="flex items-center gap-2 text-sm text-rh-muted hover:text-rh-accent mb-5 transition-colors">
         ← Back
       </button>
