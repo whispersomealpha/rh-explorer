@@ -89,8 +89,14 @@ export async function getPoolCandles(poolAddress: string): Promise<OHLCVCandle[]
 }
 
 // Get the price at a specific timestamp (finds nearest candle)
+// If timestamp is before all candles, returns the earliest available price
 export function getPriceAtTimestamp(candles: OHLCVCandle[], timestamp: number): number | null {
   if (candles.length === 0) return null
+
+  // If timestamp is before all candles, use the first candle (earliest price)
+  if (timestamp < candles[0].timestamp) {
+    return candles[0].open // Use open price of first candle as estimate
+  }
 
   // Find nearest candle
   let nearest = candles[0]
@@ -132,13 +138,19 @@ export async function calculatePnLWithPrice(
 
   const currentValueUsd = currentBalance * currentPrice
 
-  if (!firstBuyTimestamp || !poolAddress) {
+  if (!poolAddress) {
     return { entryPriceUsd: null, currentPriceUsd: currentPrice, currentValueUsd, pnlUsd: null, pnlPct: null, priceSource: 'gecko_current' }
   }
 
   // Get historical candles
   const candles = await getPoolCandles(poolAddress)
-  const entryPrice = getPriceAtTimestamp(candles, firstBuyTimestamp)
+  if (candles.length === 0) {
+    return { entryPriceUsd: null, currentPriceUsd: currentPrice, currentValueUsd, pnlUsd: null, pnlPct: null, priceSource: 'gecko_current' }
+  }
+
+  // Use firstBuyTimestamp if available, otherwise use earliest candle
+  const lookupTimestamp = firstBuyTimestamp ?? candles[0].timestamp
+  const entryPrice = getPriceAtTimestamp(candles, lookupTimestamp)
 
   if (!entryPrice) {
     return { entryPriceUsd: null, currentPriceUsd: currentPrice, currentValueUsd, pnlUsd: null, pnlPct: null, priceSource: 'gecko_current' }

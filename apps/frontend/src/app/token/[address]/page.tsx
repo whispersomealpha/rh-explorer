@@ -103,7 +103,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
   const top10Share  = holders.slice(0, 10).reduce((s, h) => s + (h.share ?? 0), 0)
   const holderCount = holders.length || parseInt(tokenInfo?.holders_count ?? tokenInfo?.holderCount ?? '0')
   const hasPnL      = holders.length > 0 && holders[0]?.tradeCount !== undefined
-  const hasPnLPct   = holders.length > 0 && holders.slice(0,10).some((h: any) => h.pnlPct != null)
+  const hasPnLPct   = priceUsd != null && hasPnL // show PnL column when we have price + activity
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
