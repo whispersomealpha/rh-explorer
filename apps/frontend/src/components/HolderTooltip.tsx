@@ -73,7 +73,7 @@ export function HolderTooltip({ address, children }: Props) {
 
   function handleMouseEnter(e: React.MouseEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    setPos({ x: rect.left, y: rect.bottom + window.scrollY + 8 })
+    setPos({ x: rect.left, y: rect.bottom + 8 })
     timerRef.current = setTimeout(() => {
       setVisible(true)
       fetchPortfolio()
