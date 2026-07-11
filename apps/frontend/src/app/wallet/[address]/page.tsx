@@ -53,17 +53,15 @@ export default function WalletPage({ params }: { params: { address: string } }) 
       })
   }, [address, txPage])
 
-  // Load token transfers - call Blockscout directly
+  // Load token transfers immediately on mount (not waiting for tab)
   useEffect(() => {
-    if (tab === 'token-transfers' && transfers.length === 0) {
-      fetch(`https://robinhoodchain.blockscout.com/api/v2/addresses/${address}/token-transfers`)
-        .then(r => r.json())
-        .then(data => setTransfers(data?.items ?? []))
-        .catch(() => {
-          api.getWalletTransfers(address).then(data => setTransfers(data?.items ?? []))
-        })
-    }
-  }, [tab, address])
+    fetch(`https://robinhoodchain.blockscout.com/api/v2/addresses/${address}/token-transfers?limit=100`)
+      .then(r => r.json())
+      .then(data => setTransfers(data?.items ?? []))
+      .catch(() => {
+        api.getWalletTransfers(address).then((data: any) => setTransfers(data?.items ?? []))
+      })
+  }, [address])
 
   const rh = profile?.rhChain
   const crossChain = (profile?.crossChain ?? [])
