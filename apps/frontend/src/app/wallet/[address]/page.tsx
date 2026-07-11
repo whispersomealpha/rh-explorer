@@ -29,38 +29,73 @@ export default function WalletPage({ params }: { params: { address: string } }) 
     api.getWalletTokens(address).then(t => setTokens(t ?? []))
   }, [address])
 
-  // Load transactions - call Blockscout directly to avoid 422 issues
+  // Load transactions via Blockscout v1 API (accepts lowercase addresses)
   useEffect(() => {
     setLoadingTxs(true)
-    // Try our API first, fall back to Blockscout directly
-    const checksumAddr = address // browser won't checksum for us
-    fetch(`https://robinhoodchain.blockscout.com/api/v2/addresses/${checksumAddr}/transactions`)
+    fetch(`https://robinhoodchain.blockscout.com/api?module=account&action=txlist&address=${address}&sort=desc&page=${txPage}&offset=50`)
       .then(r => r.json())
       .then(data => {
-        const items = data?.items ?? []
-        setTxs(items)
-        setHasMoreTxs(!!data?.next_page_params)
+        if (data.status === '1' && Array.isArray(data.result)) {
+          const items = data.result.map((tx: any) => ({
+            hash: tx.hash,
+            block: parseInt(tx.blockNumber),
+            timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
+            from: { hash: tx.from },
+            to: { hash: tx.to, is_contract: tx.input !== '0x' },
+            value: tx.value,
+            gas_used: tx.gasUsed,
+            gas_price: tx.gasPrice,
+            status: tx.txreceipt_status === '1',
+            method: tx.input !== '0x' ? tx.input.slice(0, 10) : null,
+            result: tx.txreceipt_status === '1' ? 'success' : 'failed',
+          }))
+          if (txPage === 1) setTxs(items)
+          else setTxs(prev => [...prev, ...items])
+          setHasMoreTxs(items.length === 50)
+        }
         setLoadingTxs(false)
       })
-      .catch(() => {
-        // Fallback to our API
-        api.getWalletTxs(address, txPage).then(data => {
-          const items = data?.items ?? []
-          setTxs(items)
-          setHasMoreTxs(!!data?.next_page_params)
-          setLoadingTxs(false)
-        }).catch(() => setLoadingTxs(false))
-      })
+      .catch(() => setLoadingTxs(false))
   }, [address, txPage])
 
-  // Load token transfers immediately on mount (not waiting for tab)
+  // Load token transfers immediately on mount
   useEffect(() => {
-    fetch(`https://robinhoodchain.blockscout.com/api/v2/addresses/${address}/token-transfers?limit=100`)
+    // Blockscout v2 requires checksummed address
+    const toChecksum = (addr: string) => {
+      try {
+        const hex = addr.slice(2).toLowerCase()
+        const hash = Array.from(hex).reduce((h, c) => {
+          return h // simplified - just use the API directly
+        }, '')
+        return addr // fallback to original if no ethers
+      } catch { return addr }
+    }
+
+    // Use v1 API which accepts lowercase addresses
+    fetch(`https://robinhoodchain.blockscout.com/api?module=account&action=tokentx&address=${address}&sort=desc&page=1&offset=100`)
       .then(r => r.json())
-      .then(data => setTransfers(data?.items ?? []))
-      .catch(() => {
-        api.getWalletTransfers(address).then((data: any) => setTransfers(data?.items ?? []))
+      .then(data => {
+        if (data.status === '1' && Array.isArray(data.result)) {
+          // Normalize v1 format to match what our template expects
+          const items = data.result.map((tx: any) => ({
+            tx_hash: tx.hash,
+            timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
+            from: { hash: tx.from },
+            to: { hash: tx.to },
+            token: {
+              address: tx.contractAddress,
+              symbol: tx.tokenSymbol,
+              name: tx.tokenName,
+              decimals: tx.tokenDecimal,
+            },
+            total: { value: tx.value },
+          }))
+          setTransfers(items)
+        } else {
+          setTransfers([])
+        }
       })
+      .catch(() => setTransfers([]))
   }, [address])
 
   const rh = profile?.rhChain
