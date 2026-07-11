@@ -29,22 +29,39 @@ export default function WalletPage({ params }: { params: { address: string } }) 
     api.getWalletTokens(address).then(t => setTokens(t ?? []))
   }, [address])
 
-  // Load transactions
+  // Load transactions - call Blockscout directly to avoid 422 issues
   useEffect(() => {
     setLoadingTxs(true)
-    api.getWalletTxs(address, txPage).then(data => {
-      const items = data?.items ?? []
-      if (txPage === 1) setTxs(items)
-      else setTxs(prev => [...prev, ...items])
-      setHasMoreTxs(!!data?.next_page_params)
-      setLoadingTxs(false)
-    }).catch(() => setLoadingTxs(false))
+    // Try our API first, fall back to Blockscout directly
+    const checksumAddr = address // browser won't checksum for us
+    fetch(`https://robinhoodchain.blockscout.com/api/v2/addresses/${checksumAddr}/transactions`)
+      .then(r => r.json())
+      .then(data => {
+        const items = data?.items ?? []
+        setTxs(items)
+        setHasMoreTxs(!!data?.next_page_params)
+        setLoadingTxs(false)
+      })
+      .catch(() => {
+        // Fallback to our API
+        api.getWalletTxs(address, txPage).then(data => {
+          const items = data?.items ?? []
+          setTxs(items)
+          setHasMoreTxs(!!data?.next_page_params)
+          setLoadingTxs(false)
+        }).catch(() => setLoadingTxs(false))
+      })
   }, [address, txPage])
 
-  // Load token transfers
+  // Load token transfers - call Blockscout directly
   useEffect(() => {
     if (tab === 'token-transfers' && transfers.length === 0) {
-      api.getWalletTransfers(address).then(data => setTransfers(data?.items ?? []))
+      fetch(`https://robinhoodchain.blockscout.com/api/v2/addresses/${address}/token-transfers`)
+        .then(r => r.json())
+        .then(data => setTransfers(data?.items ?? []))
+        .catch(() => {
+          api.getWalletTransfers(address).then(data => setTransfers(data?.items ?? []))
+        })
     }
   }, [tab, address])
 

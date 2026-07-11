@@ -37,7 +37,8 @@ export async function getAddress(addr: string) {
 }
 
 export async function getAddressTxs(addr: string, page = 1, limit = 50) {
-  const { data } = await http.get(`/addresses/${addr}/transactions`, { params: { page, limit } })
+  // Blockscout v2 uses cursor-based pagination - no page/limit params
+  const { data } = await http.get(`/addresses/${addr}/transactions`)
   return data
 }
 
@@ -47,7 +48,8 @@ export async function getAddressTokenBalances(addr: string) {
 }
 
 export async function getAddressTokenTransfers(addr: string, tokenAddr?: string, page = 1) {
-  const params: Record<string, any> = { page, limit: 50 }
+  // Don't pass page param - Blockscout v2 uses cursor pagination
+  const params: Record<string, any> = {}
   if (tokenAddr) params.token = tokenAddr
   const { data } = await http.get(`/addresses/${addr}/token-transfers`, { params })
   return data
