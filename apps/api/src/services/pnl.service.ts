@@ -1,24 +1,29 @@
 import { ethers } from 'ethers'
 import axios from 'axios'
 import { cache } from '../lib/cache'
+import { calculatePnLWithPrice, getTokenPriceGecko } from './price.service'
 
 const V1 = 'https://robinhoodchain.blockscout.com/api'
-const V2 = 'https://robinhoodchain.blockscout.com/api/v2'
 
 export interface HolderPnL {
   address: string
-  tradeCount: number          // total transfer events
-  totalReceived: number       // tokens ever received
-  totalSent: number           // tokens ever sent
+  tradeCount: number
+  totalReceived: number
+  totalSent: number
   currentBalance: number
-  currentValueUsd: number | null
+  // Price data
   currentPriceUsd: number | null
+  entryPriceUsd: number | null
+  currentValueUsd: number | null
+  pnlUsd: number | null
+  pnlPct: number | null
+  priceSource: string
+  // Activity
   firstBuyTimestamp: number | null
   lastActivityTimestamp: number | null
   dataSource: string
 }
 
-// Get all token transfers for a holder (up to 200)
 async function getHolderTransfers(holderAddress: string, tokenAddress: string): Promise<any[]> {
   const cacheKey = `htx:${holderAddress.toLowerCase()}:${tokenAddress.toLowerCase()}`
   const cached = cache.get<any[]>(cacheKey)
@@ -45,24 +50,10 @@ async function getHolderTransfers(holderAddress: string, tokenAddress: string): 
   }
 }
 
-// Get current price from Blockscout exchange_rate field
 export async function getCurrentTokenPrice(tokenAddress: string): Promise<number | null> {
-  const cacheKey = `price:${tokenAddress.toLowerCase()}`
-  const cached = cache.get<number | null>(cacheKey)
-  if (cached !== null && cached !== undefined) return cached
-
-  try {
-    const { data } = await axios.get(`${V2}/tokens/${tokenAddress}`, { timeout: 8000 })
-    const price = data.exchange_rate ? parseFloat(data.exchange_rate) : null
-    cache.set(cacheKey, price, 60)
-    return price
-  } catch {
-    cache.set(cacheKey, null, 30)
-    return null
-  }
+  return getTokenPriceGecko(tokenAddress)
 }
 
-// Calculate PnL for a single holder
 export async function calculateHolderPnL(
   holderAddress: string,
   tokenAddress: string,
@@ -90,12 +81,12 @@ export async function calculateHolderPnL(
       if (!firstBuyTimestamp && isReceive) firstBuyTimestamp = ts
       if (!lastActivityTimestamp || ts > lastActivityTimestamp) lastActivityTimestamp = ts
     }
-
     if (isReceive) totalReceived += amount
     else totalSent += amount
   }
 
-  const currentValueUsd = currentPriceUsd != null ? currentBalance * currentPriceUsd : null
+  // Get real PnL using GeckoTerminal OHLCV
+  const pnlData = await calculatePnLWithPrice(firstBuyTimestamp, currentBalance, tokenAddress)
 
   const result: HolderPnL = {
     address: holderAddress,
@@ -103,8 +94,12 @@ export async function calculateHolderPnL(
     totalReceived,
     totalSent,
     currentBalance,
-    currentValueUsd,
-    currentPriceUsd,
+    currentPriceUsd: pnlData.currentPriceUsd,
+    entryPriceUsd: pnlData.entryPriceUsd,
+    currentValueUsd: pnlData.currentValueUsd,
+    pnlUsd: pnlData.pnlUsd,
+    pnlPct: pnlData.pnlPct,
+    priceSource: pnlData.priceSource,
     firstBuyTimestamp,
     lastActivityTimestamp,
     dataSource: transfers.length > 0 ? 'blockscout_transfers' : 'no_data',
@@ -114,7 +109,6 @@ export async function calculateHolderPnL(
   return result
 }
 
-// Batch PnL for up to 50 holders — processes 5 at a time
 export async function batchHolderPnL(
   holders: Array<{ address: string; balanceFormatted: number }>,
   tokenAddress: string,
@@ -122,9 +116,9 @@ export async function batchHolderPnL(
   currentPriceUsd: number | null
 ): Promise<Record<string, HolderPnL>> {
   const results: Record<string, HolderPnL> = {}
-  const capped = holders.slice(0, 50) // hard cap at 50
-
+  const capped = holders.slice(0, 50)
   const BATCH = 5
+
   for (let i = 0; i < capped.length; i += BATCH) {
     const batch = capped.slice(i, i + BATCH)
     const settled = await Promise.allSettled(

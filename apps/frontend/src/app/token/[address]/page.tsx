@@ -103,6 +103,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
   const top10Share  = holders.slice(0, 10).reduce((s, h) => s + (h.share ?? 0), 0)
   const holderCount = holders.length || parseInt(tokenInfo?.holders_count ?? tokenInfo?.holderCount ?? '0')
   const hasPnL      = holders.length > 0 && holders[0]?.tradeCount !== undefined
+  const hasPnLPct   = holders.length > 0 && holders.slice(0,10).some((h: any) => h.pnlPct != null)
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -226,6 +227,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                         {priceUsd && <th>Value (USD)</th>}
                         {hasPnL && <th>Txs</th>}
                         {hasPnL && <th>First Buy</th>}
+                        {hasPnLPct && <th>PnL</th>}
                         <th>Bar</th>
                         <th>Investigate</th>
                       </tr>
@@ -274,6 +276,22 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                                 {h.firstBuyTimestamp
                                   ? <span className="text-xs text-rh-muted">{timeAgo(h.firstBuyTimestamp)}</span>
                                   : <span className="text-rh-muted text-xs">—</span>}
+                              </td>
+                            )}
+                            {hasPnLPct && (
+                              <td>
+                                {h.pnlPct != null ? (
+                                  <div className="flex flex-col">
+                                    <span className={`text-sm font-bold ${h.pnlPct >= 0 ? 'text-rh-green' : 'text-rh-red'}`}>
+                                      {h.pnlPct >= 0 ? '+' : ''}{h.pnlPct.toFixed(1)}%
+                                    </span>
+                                    {h.pnlUsd != null && (
+                                      <span className={`text-xs ${h.pnlUsd >= 0 ? 'text-rh-green' : 'text-rh-red'}`}>
+                                        {h.pnlUsd >= 0 ? '+' : ''}${formatNumber(Math.abs(h.pnlUsd), 2)}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : <span className="text-rh-muted text-xs">—</span>}
                               </td>
                             )}
                             <td style={{ width: 100 }}>

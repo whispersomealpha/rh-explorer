@@ -58,10 +58,15 @@ export async function tokenRoutes(app: FastifyInstance) {
         const pnl = pnlMap[h.address.toLowerCase()]
         return {
           ...h,
-          valueUsd: price != null ? h.balanceFormatted * price : null,
+          valueUsd: pnl?.currentValueUsd ?? (price != null ? h.balanceFormatted * price : null),
           tradeCount: pnl?.tradeCount ?? null,
           firstBuyTimestamp: pnl?.firstBuyTimestamp ?? null,
           lastActivityTimestamp: pnl?.lastActivityTimestamp ?? null,
+          entryPriceUsd: pnl?.entryPriceUsd ?? null,
+          currentPriceUsd: pnl?.currentPriceUsd ?? price,
+          pnlUsd: pnl?.pnlUsd ?? null,
+          pnlPct: pnl?.pnlPct ?? null,
+          priceSource: pnl?.priceSource ?? null,
         }
       })
 

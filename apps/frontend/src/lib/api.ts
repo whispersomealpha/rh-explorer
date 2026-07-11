@@ -15,6 +15,8 @@ export const api = {
   getTokenHolders:   (addr: string)           => API.get(`/tokens/${addr}/holders`, { timeout: 120000 }).then(r => r.data),
   getTokenTransfers: (addr: string, page = 1) => API.get(`/tokens/${addr}/transfers`, { params: { page } }).then(r => r.data),
   getTokenPrice:     (addr: string)           => API.get(`/tokens/${addr}/price`).then(r => r.data),
+  getBatchPnL: (tokenAddr: string, holders: any[], decimals: number, currentPriceUsd: number | null) =>
+    API.post(`/tokens/${tokenAddr}/pnl/batch`, { holders, decimals, currentPriceUsd }, { timeout: 60000 }).then(r => r.data),
   getWallet:         (addr: string)           => API.get(`/wallet/${addr}`).then(r => r.data),
   getWalletTxs:      (addr: string, page = 1) => API.get(`/wallet/${addr}/txs`, { params: { page } }).then(r => r.data),
   getWalletTokens:   (addr: string)           => API.get(`/wallet/${addr}/tokens`).then(r => r.data),
