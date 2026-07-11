@@ -7,29 +7,30 @@ import { tokenRoutes } from './routes/tokens'
 import { walletRoutes } from './routes/wallet'
 import { searchRoutes } from './routes/search'
 
-const app = Fastify({
-  logger: {
-    level: 'warn', // suppress info noise, only show warnings+
-  }
-})
+const app = Fastify({ logger: false })
 
 async function main() {
   await app.register(cors, { origin: '*' })
+
+  // Must register content type parser for POST JSON body
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    try {
+      done(null, JSON.parse(body as string))
+    } catch (err: any) {
+      done(err, undefined)
+    }
+  })
+
   await app.register(rateLimit, {
     max: 200,
     timeWindow: '1 minute',
-    errorResponseBuilder: () => ({
-      statusCode: 429,
-      error: 'Too Many Requests',
-      message: 'Rate limit exceeded',
-    }),
   })
 
   app.get('/health', async () => ({
     status: 'ok',
-    chain: 'Robinhood Chain',
     chainId: 4663,
     alchemyConfigured: !!process.env.ALCHEMY_API_KEY,
+    ts: Date.now(),
   }))
 
   await app.register(blocksRoutes, { prefix: '/api' })
@@ -39,11 +40,7 @@ async function main() {
 
   const port = parseInt(process.env.PORT ?? '3001')
   await app.listen({ port, host: '0.0.0.0' })
-  console.log(`API running on port ${port}`)
-  console.log(`Alchemy key: ${process.env.ALCHEMY_API_KEY ? 'configured' : 'MISSING - using public RPC'}`)
+  console.log(`API ready on port ${port}`)
 }
 
-main().catch(err => {
-  console.error(err)
-  process.exit(1)
-})
+main().catch(err => { console.error(err); process.exit(1) })

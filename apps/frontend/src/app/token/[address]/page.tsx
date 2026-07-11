@@ -1,3 +1,4 @@
+// v2-pnl-debug
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
@@ -105,12 +106,15 @@ export default function TokenPage({ params }: { params: { address: string } }) {
       pageCache.set(addr, { tokenInfo: ti2 ?? info, holders: h, transfers: [], ts: Date.now() })
 
       // Phase 3: PnL for first 50 — fires immediately after holders load
+      console.log('[PnL] holders count:', h.length, 'price:', price)
       if (h.length > 0) {
         const decimals = parseInt(ti2?.decimals ?? info?.decimals ?? '18')
         setLoadingPnL(true)
         try {
           const first50 = h.slice(0, 50).map((x: any) => ({ address: x.address, balanceFormatted: x.balanceFormatted }))
+          console.log('[PnL] calling batch for', first50.length, 'holders')
           const results = await api.getBatchPnL(address, first50, decimals, price)
+          console.log('[PnL] batch results:', Object.keys(results).length, 'entries')
           if (!cancelled) {
             setPnlMap(results)
             pnlCache.set(addr, results)
