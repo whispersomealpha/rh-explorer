@@ -20,6 +20,7 @@ export default function WalletPage({ params }: { params: { address: string } }) 
   const [txFilter, setTxFilter] = useState('')
   const [txPage, setTxPage]     = useState(1)
   const [hasMoreTxs, setHasMoreTxs] = useState(false)
+  const [tokenFilter, setTokenFilter] = useState('')
 
   // Load wallet profile (ETH balance, funding info, cross-chain)
   useEffect(() => {
@@ -261,7 +262,13 @@ export default function WalletPage({ params }: { params: { address: string } }) 
       {/* ── TOKEN TRANSFERS TAB ── */}
       {tab === 'token-transfers' && (
         <div>
-          {Object.keys(transfersByToken).length === 0 && transfers.length === 0 && (
+          <div className="flex gap-2 mb-3">
+        <input value={tokenFilter} onChange={e => setTokenFilter(e.target.value)}
+          placeholder="Filter by token symbol..."
+          className="flex-1 px-3 py-2 text-sm rounded-lg border border-rh-border bg-rh-surface text-rh-text placeholder-rh-muted focus:outline-none focus:border-rh-accent" />
+        {tokenFilter && <button onClick={() => setTokenFilter('')} className="text-xs px-3 py-2 text-rh-muted hover:text-rh-accent border border-rh-border rounded-lg">Clear</button>}
+      </div>
+      {Object.keys(transfersByToken).length === 0 && transfers.length === 0 && (
             <div className="text-center py-12 text-rh-muted">Loading token transfers...</div>
           )}
 
@@ -270,7 +277,9 @@ export default function WalletPage({ params }: { params: { address: string } }) 
           )}
 
           {/* Group by token */}
-          {Object.entries(transfersByToken).map(([symbol, txList]) => {
+          {Object.entries(transfersByToken)
+    .filter(([symbol]) => !tokenFilter || symbol.toLowerCase().includes(tokenFilter.toLowerCase()))
+    .map(([symbol, txList]) => {
             const tokenAddr = txList[0]?.token?.address
             return (
               <div key={symbol} className="mb-6 rounded-xl border border-rh-border bg-rh-card overflow-hidden">
@@ -361,7 +370,12 @@ export default function WalletPage({ params }: { params: { address: string } }) 
                 const bal = parseFloat(t.value ?? '0') / Math.pow(10, parseInt(t.token?.decimals ?? '18'))
                 return (
                   <tr key={i}>
-                    <td className="font-semibold text-rh-text">{t.token?.name ?? 'Unknown'}</td>
+                    <td>
+                      <button onClick={() => { setTab('token-transfers'); setTokenFilter(t.token?.symbol ?? '') }}
+                        className="font-semibold text-rh-accent hover:underline text-left">
+                        {t.token?.name ?? 'Unknown'}
+                      </button>
+                    </td>
                     <td><span className="badge badge-purple">{t.token?.symbol}</span></td>
                     <td className="mono text-sm">{formatNumber(bal, 6)}</td>
                     <td>
@@ -370,10 +384,16 @@ export default function WalletPage({ params }: { params: { address: string } }) 
                       </Link>
                     </td>
                     <td>
-                      <Link href={`/token/${t.token?.address}`}
-                        className="text-xs px-3 py-1 rounded-lg border border-rh-border hover:border-rh-accent hover:text-rh-accent transition-colors text-rh-muted">
-                        View holders
-                      </Link>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setTab('token-transfers'); setTokenFilter(t.token?.symbol ?? '') }}
+                          className="text-xs px-2 py-1 rounded border border-rh-border hover:border-rh-accent hover:text-rh-accent transition-colors text-rh-muted">
+                          Txs
+                        </button>
+                        <Link href={`/token/${t.token?.address}`}
+                          className="text-xs px-2 py-1 rounded border border-rh-border hover:border-rh-accent hover:text-rh-accent transition-colors text-rh-muted">
+                          Holders
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 )
