@@ -12,7 +12,6 @@ const app = Fastify({ logger: false })
 async function main() {
   await app.register(cors, { origin: '*' })
 
-  // Must register content type parser for POST JSON body
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
     try {
       done(null, JSON.parse(body as string))
