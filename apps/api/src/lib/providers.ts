@@ -1,5 +1,5 @@
 import { ethers } from 'ethers'
-import { CHAIN_CONFIG } from '../../../packages/types/index'
+import { CHAIN_CONFIG } from './types'
 
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY!
 const RH_RPC = `https://robinhood-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`

@@ -8,11 +8,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "paths": {
-      "@rh-explorer/types": ["../../packages/types/index.ts"],
-      "@rh-explorer/abi": ["../../packages/abi/index.ts"]
-    }
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*", "../../packages/**/*"]
+  "include": ["src/**/*"]
 }

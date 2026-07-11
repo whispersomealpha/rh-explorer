@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { STOCK_TOKENS } from '../../../packages/types'
+import { STOCK_TOKENS } from '../../lib/types'
 import { shortAddr } from '../../lib/utils'
 
 const TOKEN_META: Record<string, { name: string; type: 'stock' | 'etf' | 'stable' | 'wrapped' }> = {

@@ -14,7 +14,7 @@ import {
   CHAIN_CONFIG,
   CEX_LABELS,
   KNOWN_ADDRESSES,
-} from '../../../packages/types/index'
+} from '../lib/types'
 
 // L2 gateway addresses that indicate a bridge deposit
 const BRIDGE_GATEWAYS = new Set([

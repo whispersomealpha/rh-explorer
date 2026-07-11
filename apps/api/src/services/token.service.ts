@@ -1,8 +1,8 @@
 import { ethers } from 'ethers'
 import { rhProvider } from '../lib/providers'
 import { getAllTokenHolders, getToken } from '../lib/blockscout'
-import { ERC20_ABI } from '../../../packages/abi/index'
-import { TokenHolder, TokenInfo, KNOWN_ADDRESSES } from '../../../packages/types/index'
+import { ERC20_ABI } from '../lib/abi'
+import { TokenHolder, TokenInfo, KNOWN_ADDRESSES } from '../lib/types'
 
 export async function getTokenInfo(address: string): Promise<TokenInfo> {
   const [onChain, bsData] = await Promise.allSettled([

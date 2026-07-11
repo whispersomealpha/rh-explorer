@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '../lib/api'
 import { shortAddr, formatEth, timeAgo, formatGwei, formatNumber } from '../lib/utils'
-import { STOCK_TOKENS } from '../../packages/types'
+import { STOCK_TOKENS } from '../lib/types'
 
 export default function HomePage() {
   const [blocks, setBlocks]   = useState<any[]>([])
