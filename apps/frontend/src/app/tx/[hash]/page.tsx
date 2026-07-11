@@ -1,11 +1,13 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { api } from '../../../lib/api'
 import { shortAddr, formatEth, formatGwei, formatTs, timeAgo } from '../../../lib/utils'
 
 export default function TxPage({ params }: { params: { hash: string } }) {
   const { hash } = params
+  const router = useRouter()
   const [tx, setTx]         = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
@@ -20,6 +22,12 @@ export default function TxPage({ params }: { params: { hash: string } }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
+      {/* Back button */}
+      <button onClick={() => router.back()}
+        className="flex items-center gap-2 text-sm text-rh-muted hover:text-rh-accent mb-5 transition-colors">
+        ← Back
+      </button>
+
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-xl font-bold text-rh-text">Transaction</h1>
@@ -51,7 +59,6 @@ export default function TxPage({ params }: { params: { hash: string } }) {
           </div>
         ))}
 
-        {/* Input data */}
         {tx.raw_input && tx.raw_input !== '0x' && (
           <div className="px-5 py-4">
             <div className="text-xs text-rh-muted uppercase tracking-wider mb-2 font-semibold">Input Data</div>
@@ -69,7 +76,6 @@ export default function TxPage({ params }: { params: { hash: string } }) {
           </div>
         )}
 
-        {/* Logs */}
         {tx.logs?.length > 0 && (
           <div className="px-5 py-4">
             <div className="text-xs text-rh-muted uppercase tracking-wider mb-3 font-semibold">

@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '../../../lib/api'
 import { shortAddr, formatEth, formatNumber, timeAgo, formatTs } from '../../../lib/utils'
@@ -21,6 +22,12 @@ export default function WalletPage({ params }: { params: { address: string } }) 
   const [txPage, setTxPage]     = useState(1)
   const [hasMoreTxs, setHasMoreTxs] = useState(false)
   const [tokenFilter, setTokenFilter] = useState('')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  // Token context from URL: /wallet/0x...?token=WALLET&balance=13470000&symbol=WALLET
+  const contextToken = searchParams.get('token')
+  const contextBalance = searchParams.get('balance')
+  const contextSymbol = searchParams.get('symbol')
 
   // Load wallet profile (ETH balance, funding info, cross-chain)
   useEffect(() => {
@@ -173,7 +180,32 @@ export default function WalletPage({ params }: { params: { address: string } }) 
           </div>
         </div>
 
-        {/* Funding source pill */}
+        {/* Back button */}
+        <div className="mb-3">
+          <button onClick={() => router.back()}
+            className="text-xs text-rh-muted hover:text-rh-accent transition-colors">
+            ← Back
+          </button>
+        </div>
+
+      {/* Token context banner — shown when coming from a token holder list */}
+      {contextToken && contextBalance && (
+        <div className="mt-3 px-4 py-2 rounded-lg bg-rh-accent/10 border border-rh-accent/30 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-rh-muted">Holding</span>
+            <span className="font-bold text-rh-text mono">
+              {parseFloat(contextBalance).toLocaleString(undefined, {maximumFractionDigits: 4})}
+            </span>
+            <span className="badge badge-purple">{contextSymbol ?? contextToken}</span>
+          </div>
+          <button onClick={() => { setTab('token-transfers'); setTokenFilter(contextSymbol ?? contextToken ?? '') }}
+            className="text-xs text-rh-accent hover:underline">
+            View {contextSymbol} transfers →
+          </button>
+        </div>
+      )}
+
+      {/* Funding source pill */}
         {rh?.fundedBy && (
           <div className="mt-3 flex items-center gap-2 text-xs text-rh-muted">
             <span>Funded via</span>

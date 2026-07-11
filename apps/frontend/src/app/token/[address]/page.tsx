@@ -240,7 +240,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                             <td><span className={`badge ${globalRank < 3 ? 'badge-purple' : 'badge-gray'}`}>#{h.rank}</span></td>
                             <td>
                               <HolderTooltip address={h.address}>
-                                <Link href={`/wallet/${h.address}`} className="mono text-rh-accent hover:underline text-sm">
+                                <Link href={`/wallet/${h.address}?token=${tokenInfo?.symbol}&balance=${h.balanceFormatted}&symbol=${tokenInfo?.symbol}`} className="mono text-rh-accent hover:underline text-sm">
                                   {shortAddr(h.address, 10)}
                                 </Link>
                               </HolderTooltip>
@@ -301,7 +301,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                               </div>
                             </td>
                             <td>
-                              <Link href={`/wallet/${h.address}`}
+                              <Link href={`/wallet/${h.address}?token=${tokenInfo?.symbol}&balance=${h.balanceFormatted}&symbol=${tokenInfo?.symbol}`}
                                 className="text-xs px-3 py-1 rounded-lg border border-rh-border hover:border-rh-accent hover:text-rh-accent transition-colors text-rh-muted whitespace-nowrap">
                                 🔍 Trace
                               </Link>
