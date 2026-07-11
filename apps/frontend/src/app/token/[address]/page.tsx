@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { api } from '../../../lib/api'
-import { shortAddr, formatNumber, timeAgo, formatTs } from '../../../lib/utils'
+import { shortAddr, formatNumber, timeAgo } from '../../../lib/utils'
 import { HolderTooltip } from '../../../components/HolderTooltip'
 
 // Session-level caches — survive back navigation
