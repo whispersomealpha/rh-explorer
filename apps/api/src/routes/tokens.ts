@@ -4,34 +4,57 @@ import { getTokenTransfers } from '../lib/blockscout'
 import { cache } from '../lib/cache'
 
 export async function tokenRoutes(app: FastifyInstance) {
-  // GET /tokens/:address — token info
+  // GET /tokens/:address — token info only (fast)
   app.get('/tokens/:address', async (req, reply) => {
     const { address } = req.params as any
-    const cacheKey = `token:${address.toLowerCase()}`
+    const addr = address.toLowerCase()
+    const cacheKey = `token:${addr}`
     const cached = cache.get(cacheKey)
     if (cached) return reply.send(cached)
-    const info = await getTokenInfo(address)
-    cache.set(cacheKey, info, 120) // 2 min
-    return reply.send(info)
+    try {
+      const info = await getTokenInfo(address)
+      cache.set(cacheKey, info, 120)
+      return reply.send(info)
+    } catch (e: any) {
+      return reply.status(500).send({ error: e.message })
+    }
   })
 
-  // GET /tokens/:address/holders — full holder list (cached)
+  // GET /tokens/:address/holders — full holder list with caching
+  // If cache is warm: responds instantly
+  // If cache is cold: fetches (slow), caches, responds
   app.get('/tokens/:address/holders', async (req, reply) => {
     const { address } = req.params as any
-    const cacheKey = `holders:${address.toLowerCase()}`
+    const addr = address.toLowerCase()
+    const cacheKey = `holders:${addr}`
 
-    // Return cached immediately if available
     const cached = cache.get(cacheKey)
     if (cached) {
       reply.header('X-Cache', 'HIT')
       return reply.send(cached)
     }
 
-    // Mark as loading so concurrent requests don't double-fetch
-    const result = await getHolderList(address)
-    cache.set(cacheKey, result, 300) // 5 min cache
-    reply.header('X-Cache', 'MISS')
-    return reply.send(result)
+    try {
+      reply.header('X-Cache', 'MISS')
+      const result = await getHolderList(address)
+      // Only cache if we actually got holders
+      if (result.holders.length > 0) {
+        cache.set(cacheKey, result, 300) // 5 min
+      }
+      return reply.send(result)
+    } catch (e: any) {
+      return reply.status(500).send({ error: e.message })
+    }
+  })
+
+  // GET /tokens/:address/holders/status — check if cached
+  app.get('/tokens/:address/holders/status', async (req, reply) => {
+    const { address } = req.params as any
+    const cached = cache.get(`holders:${address.toLowerCase()}`)
+    return reply.send({
+      cached: !!cached,
+      holderCount: cached ? (cached as any).holders?.length ?? 0 : null,
+    })
   })
 
   // GET /tokens/:address/transfers
@@ -41,8 +64,12 @@ export async function tokenRoutes(app: FastifyInstance) {
     const cacheKey = `transfers:${address.toLowerCase()}:${page}`
     const cached = cache.get(cacheKey)
     if (cached) return reply.send(cached)
-    const data = await getTokenTransfers(address, parseInt(page))
-    cache.set(cacheKey, data, 60)
-    return reply.send(data)
+    try {
+      const data = await getTokenTransfers(address, parseInt(page))
+      cache.set(cacheKey, data, 60)
+      return reply.send(data)
+    } catch (e: any) {
+      return reply.status(500).send({ error: e.message })
+    }
   })
 }

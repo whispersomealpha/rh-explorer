@@ -1,88 +1,120 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { api } from '../../../lib/api'
 import { shortAddr, formatNumber, timeAgo } from '../../../lib/utils'
 import { HolderTooltip } from '../../../components/HolderTooltip'
 
-// Module-level cache — persists across back/forward navigation
-const pageCache = new Map<string, { tokenInfo: any; holders: any[]; transfers: any[]; ts: number }>()
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+// Module-level cache — survives back/forward navigation within session
+const pageCache = new Map<string, {
+  tokenInfo: any
+  holders: any[]
+  transfers: any[]
+  ts: number
+}>()
+const CACHE_TTL = 5 * 60 * 1000
 
 export default function TokenPage({ params }: { params: { address: string } }) {
   const { address } = params
-  const [tokenInfo, setTokenInfo] = useState<any>(null)
-  const [holders, setHolders]     = useState<any[]>([])
-  const [transfers, setTransfers] = useState<any[]>([])
-  const [tab, setTab]             = useState<'holders' | 'transfers'>('holders')
-  const [loading, setLoading]     = useState(true)
-  const [loadingMsg, setLoadingMsg] = useState('Loading token...')
-  const [search, setSearch]       = useState('')
-  const [sortBy, setSortBy]       = useState<'rank' | 'balance' | 'share'>('rank')
-  const intervalRef = useRef<any>(null)
+  const addr = address.toLowerCase()
+
+  const [tokenInfo, setTokenInfo]   = useState<any>(null)
+  const [holders, setHolders]       = useState<any[]>([])
+  const [transfers, setTransfers]   = useState<any[]>([])
+  const [tab, setTab]               = useState<'holders' | 'transfers'>('holders')
+  const [loadingInfo, setLoadingInfo]     = useState(true)
+  const [loadingHolders, setLoadingHolders] = useState(true)
+  const [loadingMsg, setLoadingMsg]   = useState('Fetching token info...')
+  const [search, setSearch]         = useState('')
+  const [sortBy, setSortBy]         = useState<'rank' | 'balance' | 'share'>('rank')
+  const msgTimer = useRef<any>(null)
+
+  const animateMsgs = useCallback((count: number) => {
+    const msgs = [
+      `Fetching holders from Blockscout...`,
+      `Paginating ${count > 0 ? count.toLocaleString() + ' ' : ''}holders...`,
+      'Processing balances and shares...',
+      'Almost done...',
+    ]
+    let i = 0
+    clearInterval(msgTimer.current)
+    msgTimer.current = setInterval(() => {
+      i = (i + 1) % msgs.length
+      setLoadingMsg(msgs[i])
+    }, 2500)
+  }, [])
 
   useEffect(() => {
+    let cancelled = false
+
     async function load() {
-      // Check module-level cache first (survives back navigation)
-      const cached = pageCache.get(address.toLowerCase())
+      // Check module cache first — instant on back navigation
+      const cached = pageCache.get(addr)
       if (cached && Date.now() - cached.ts < CACHE_TTL) {
         setTokenInfo(cached.tokenInfo)
         setHolders(cached.holders)
         setTransfers(cached.transfers)
-        setLoading(false)
+        setLoadingInfo(false)
+        setLoadingHolders(false)
         return
       }
 
-      setLoading(true)
-
-      // Load token info fast first
+      // Step 1: load token info fast
+      setLoadingInfo(true)
+      setLoadingHolders(true)
       try {
         const info = await api.getToken(address)
-        setTokenInfo(info)
-        setLoadingMsg(`Loading holders (${parseInt(info.holders_count ?? info.holderCount ?? '0').toLocaleString()} total)...`)
-      } catch {}
+        if (!cancelled) {
+          setTokenInfo(info)
+          setLoadingInfo(false)
+          const count = parseInt(info.holders_count ?? info.holderCount ?? '0')
+          setLoadingMsg(`Fetching ${count > 0 ? count.toLocaleString() + ' ' : ''}holders...`)
+          animateMsgs(count)
+        }
+      } catch {
+        if (!cancelled) setLoadingInfo(false)
+      }
 
-      // Animate loading message while holders fetch
-      const msgs = [
-        'Fetching holders from Blockscout...',
-        'Paginating through all holder pages...',
-        'Almost there...',
-        'Processing holder data...',
-      ]
-      let msgIdx = 0
-      intervalRef.current = setInterval(() => {
-        msgIdx = (msgIdx + 1) % msgs.length
-        setLoadingMsg(msgs[msgIdx])
-      }, 2000)
+      // Step 2: load holders + transfers in parallel (holders may be slow)
+      try {
+        const [holdersRes, transfersRes] = await Promise.allSettled([
+          api.getTokenHolders(address),
+          api.getTokenTransfers(address),
+        ])
 
-      const [holdersData, txData] = await Promise.allSettled([
-        api.getTokenHolders(address),
-        api.getTokenTransfers(address),
-      ])
+        if (cancelled) return
+        clearInterval(msgTimer.current)
 
-      clearInterval(intervalRef.current)
+        const holderData = holdersRes.status === 'fulfilled' ? holdersRes.value : null
+        const txData     = transfersRes.status === 'fulfilled' ? transfersRes.value : null
 
-      const info2 = holdersData.status === 'fulfilled' ? holdersData.value?.tokenInfo : null
-      const h     = holdersData.status === 'fulfilled' ? (holdersData.value?.holders ?? []) : []
-      const t     = txData.status === 'fulfilled' ? (txData.value?.items ?? []) : []
+        const h = holderData?.holders ?? []
+        const t = txData?.items ?? []
+        const info2 = holderData?.tokenInfo
 
-      if (info2) setTokenInfo(info2)
-      setHolders(h)
-      setTransfers(t)
+        if (info2) setTokenInfo((prev: any) => ({ ...prev, ...info2 }))
+        setHolders(h)
+        setTransfers(t)
+        setLoadingHolders(false)
 
-      // Store in module cache
-      pageCache.set(address.toLowerCase(), {
-        tokenInfo: info2,
-        holders: h,
-        transfers: t,
-        ts: Date.now(),
-      })
-
-      setLoading(false)
+        // Cache for back navigation
+        pageCache.set(addr, {
+          tokenInfo: info2 ?? tokenInfo,
+          holders: h,
+          transfers: t,
+          ts: Date.now(),
+        })
+      } catch (e) {
+        console.error('Holder fetch error:', e)
+        if (!cancelled) setLoadingHolders(false)
+      }
     }
 
     load()
-    return () => clearInterval(intervalRef.current)
+    return () => {
+      cancelled = true
+      clearInterval(msgTimer.current)
+    }
   }, [address])
 
   const filteredHolders = holders
@@ -94,13 +126,16 @@ export default function TokenPage({ params }: { params: { address: string } }) {
     })
 
   const top10Share = holders.slice(0, 10).reduce((sum, h) => sum + (h.share ?? 0), 0)
+  const holderCount = holders.length || parseInt(tokenInfo?.holders_count ?? tokenInfo?.holderCount ?? '0')
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
 
       {/* Token header */}
-      {tokenInfo && (
-        <div className="rounded-xl border border-rh-border bg-rh-card p-6 mb-6">
+      <div className="rounded-xl border border-rh-border bg-rh-card p-6 mb-6">
+        {loadingInfo ? (
+          <div className="text-rh-muted text-sm">Loading token info...</div>
+        ) : tokenInfo ? (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-3 mb-2">
@@ -118,12 +153,14 @@ export default function TokenPage({ params }: { params: { address: string } }) {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-lg font-bold text-rh-text">
-                  {formatNumber(parseInt(tokenInfo.holders_count ?? tokenInfo.holderCount ?? holders.length), 0)}
+                  {loadingHolders
+                    ? <span className="text-rh-muted text-sm">Loading...</span>
+                    : formatNumber(holderCount, 0)}
                 </div>
                 <div className="text-xs text-rh-muted">Holders</div>
               </div>
               <div>
-                <div className="text-lg font-bold text-rh-text">
+                <div className="text-lg font-bold text-rh-text mono text-base">
                   {formatNumber(tokenInfo.totalSupplyFormatted ?? 0)}
                 </div>
                 <div className="text-xs text-rh-muted">Total Supply</div>
@@ -136,29 +173,29 @@ export default function TokenPage({ params }: { params: { address: string } }) {
               </div>
             </div>
           </div>
+        ) : null}
 
-          {/* Concentration bar */}
-          {holders.length > 0 && (
-            <div className="mt-5">
-              <div className="flex justify-between text-xs text-rh-muted mb-1">
-                <span>Top 10 holders concentration</span>
-                <span className={`font-semibold ${top10Share > 80 ? 'text-rh-red' : top10Share > 50 ? 'text-rh-yellow' : 'text-rh-green'}`}>
-                  {top10Share.toFixed(1)}%
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-rh-border overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(top10Share, 100)}%`,
-                    background: top10Share > 80 ? '#ff4d6d' : top10Share > 50 ? '#ff9f1c' : '#00d4aa',
-                  }}
-                />
-              </div>
+        {/* Concentration bar — only show once holders are loaded */}
+        {!loadingHolders && holders.length > 0 && (
+          <div className="mt-5">
+            <div className="flex justify-between text-xs text-rh-muted mb-1">
+              <span>Top 10 holders concentration</span>
+              <span className={`font-semibold ${top10Share > 80 ? 'text-rh-red' : top10Share > 50 ? 'text-rh-yellow' : 'text-rh-green'}`}>
+                {top10Share.toFixed(1)}%
+              </span>
             </div>
-          )}
-        </div>
-      )}
+            <div className="h-2 rounded-full bg-rh-border overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${Math.min(top10Share, 100)}%`,
+                  background: top10Share > 80 ? '#ff4d6d' : top10Share > 50 ? '#ff9f1c' : '#00d4aa',
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-0 mb-4 border-b border-rh-border">
@@ -172,25 +209,28 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                 : 'border-transparent text-rh-muted hover:text-rh-text'
             }`}
           >
-            {t === 'holders' ? `Holders (${holders.length})` : 'Transfers'}
+            {t === 'holders'
+              ? `Holders ${loadingHolders ? '(loading...)' : `(${holders.length})`}`
+              : 'Transfers'}
           </button>
         ))}
       </div>
 
       {tab === 'holders' && (
         <>
-          {/* Controls */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter by address..."
               className="flex-1 px-4 py-2 text-sm rounded-lg border border-rh-border bg-rh-surface text-rh-text placeholder-rh-muted focus:outline-none focus:border-rh-accent"
+              disabled={loadingHolders}
             />
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value as any)}
               className="px-4 py-2 text-sm rounded-lg border border-rh-border bg-rh-surface text-rh-text focus:outline-none"
+              disabled={loadingHolders}
             >
               <option value="rank">Sort by Rank</option>
               <option value="balance">Sort by Balance</option>
@@ -198,95 +238,102 @@ export default function TokenPage({ params }: { params: { address: string } }) {
             </select>
           </div>
 
-          {loading ? (
-            <div className="text-center py-20">
+          {loadingHolders ? (
+            <div className="text-center py-20 rounded-xl border border-rh-border bg-rh-card">
               <div className="text-4xl mb-4">⏳</div>
               <div className="text-rh-text font-medium mb-2">{loadingMsg}</div>
-              <div className="text-sm text-rh-muted">
-                Fetching all holders from Blockscout — results are cached for 5 minutes after first load
+              <div className="text-sm text-rh-muted max-w-sm mx-auto">
+                First load takes 5–20 seconds. Results are cached for 5 minutes — subsequent loads are instant.
               </div>
-              <div className="mt-6 flex justify-center gap-1">
-                {[0,1,2].map(i => (
-                  <div key={i} className="w-2 h-2 rounded-full bg-rh-accent animate-pulse"
-                       style={{ animationDelay: `${i * 0.2}s` }} />
+              <div className="mt-6 flex justify-center gap-1.5">
+                {[0,1,2,3].map(i => (
+                  <div key={i} className="w-2 h-2 rounded-full bg-rh-accent"
+                       style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
                 ))}
               </div>
             </div>
           ) : (
             <div className="rounded-xl border border-rh-border bg-rh-card overflow-hidden">
-              <div className="px-4 py-2 border-b border-rh-border text-xs text-rh-muted">
-                Hover any address to preview portfolio · Click to investigate
+              <div className="px-4 py-2 border-b border-rh-border bg-rh-surface">
+                <span className="text-xs text-rh-muted">
+                  Hover any address to preview portfolio · Click to full investigation
+                </span>
               </div>
-              <table className="rh-table">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Address</th>
-                    <th>Balance</th>
-                    <th>Share</th>
-                    <th>Bar</th>
-                    <th>Investigate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredHolders.map((h, i) => (
-                    <tr key={h.address}>
-                      <td>
-                        <span className={`badge ${i < 3 ? 'badge-purple' : 'badge-gray'}`}>
-                          #{h.rank}
-                        </span>
-                      </td>
-                      <td>
-                        <HolderTooltip address={h.address}>
+              <div className="overflow-x-auto">
+                <table className="rh-table">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Address</th>
+                      <th>Balance</th>
+                      <th>Share %</th>
+                      <th>Bar</th>
+                      <th>Investigate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredHolders.map((h, i) => (
+                      <tr key={h.address}>
+                        <td>
+                          <span className={`badge ${i < 3 ? 'badge-purple' : 'badge-gray'}`}>
+                            #{h.rank}
+                          </span>
+                        </td>
+                        <td>
+                          <div>
+                            <HolderTooltip address={h.address}>
+                              <Link
+                                href={`/wallet/${h.address}`}
+                                className="mono text-rh-accent hover:underline text-sm"
+                              >
+                                {shortAddr(h.address, 10)}
+                              </Link>
+                            </HolderTooltip>
+                            {h.label && (
+                              <div className="text-xs text-rh-muted mt-0.5">{h.label}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span className="mono text-rh-text text-sm">
+                            {formatNumber(h.balanceFormatted, 2)}{' '}
+                            <span className="text-rh-muted text-xs">{tokenInfo?.symbol}</span>
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`font-semibold text-sm ${
+                            h.share > 10 ? 'text-rh-red' : h.share > 5 ? 'text-rh-yellow' : 'text-rh-text'
+                          }`}>
+                            {h.share.toFixed(3)}%
+                          </span>
+                        </td>
+                        <td style={{ width: 120 }}>
+                          <div className="h-1.5 rounded-full bg-rh-border overflow-hidden w-24">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min((h.share / (holders[0]?.share ?? 1)) * 100, 100)}%`,
+                                background: h.share > 10 ? '#ff4d6d' : '#6c63ff',
+                              }}
+                            />
+                          </div>
+                        </td>
+                        <td>
                           <Link
                             href={`/wallet/${h.address}`}
-                            className="mono text-rh-accent hover:underline text-sm"
+                            className="text-xs px-3 py-1 rounded-lg border border-rh-border hover:border-rh-accent hover:text-rh-accent transition-colors text-rh-muted whitespace-nowrap"
                           >
-                            {shortAddr(h.address, 8)}
+                            🔍 Trace
                           </Link>
-                        </HolderTooltip>
-                        {h.label && (
-                          <div className="text-xs text-rh-muted mt-0.5">{h.label}</div>
-                        )}
-                      </td>
-                      <td>
-                        <span className="mono text-rh-text text-sm">
-                          {formatNumber(h.balanceFormatted, 2)} {tokenInfo?.symbol}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`font-semibold text-sm ${
-                          h.share > 10 ? 'text-rh-red' : h.share > 5 ? 'text-rh-yellow' : 'text-rh-text'
-                        }`}>
-                          {h.share.toFixed(3)}%
-                        </span>
-                      </td>
-                      <td style={{ width: 120 }}>
-                        <div className="h-1.5 rounded-full bg-rh-border overflow-hidden w-24">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.min((h.share / (holders[0]?.share ?? 1)) * 100, 100)}%`,
-                              background: h.share > 10 ? '#ff4d6d' : '#6c63ff',
-                            }}
-                          />
-                        </div>
-                      </td>
-                      <td>
-                        <Link
-                          href={`/wallet/${h.address}`}
-                          className="text-xs px-3 py-1 rounded-lg border border-rh-border hover:border-rh-accent hover:text-rh-accent transition-colors text-rh-muted"
-                        >
-                          🔍 Trace
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {filteredHolders.length === 0 && (
-                <div className="text-center py-12 text-rh-muted text-sm">No holders found</div>
-              )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredHolders.length === 0 && !loadingHolders && (
+                  <div className="text-center py-12 text-rh-muted text-sm">No holders found</div>
+                )}
+              </div>
             </div>
           )}
         </>
@@ -330,7 +377,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                     {tx.total?.value
                       ? formatNumber(parseFloat(tx.total.value) / Math.pow(10, parseInt(tx.token?.decimals ?? '18')), 4)
                       : '?'}{' '}
-                    {tokenInfo?.symbol}
+                    <span className="text-rh-muted text-xs">{tokenInfo?.symbol}</span>
                   </td>
                   <td className="text-rh-muted text-xs">{timeAgo(tx.timestamp)}</td>
                 </tr>

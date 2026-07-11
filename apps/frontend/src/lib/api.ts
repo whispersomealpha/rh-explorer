@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const API = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL + '/api',
-  timeout: 30000,
+  timeout: 60000, // 60s timeout for holder fetches
 })
 
 export const api = {
@@ -14,9 +14,10 @@ export const api = {
   getStats:    ()                   => API.get('/stats').then(r => r.data),
 
   // Tokens
-  getToken:         (addr: string)           => API.get(`/tokens/${addr}`).then(r => r.data),
-  getTokenHolders:  (addr: string)           => API.get(`/tokens/${addr}/holders`).then(r => r.data),
-  getTokenTransfers:(addr: string, page = 1) => API.get(`/tokens/${addr}/transfers`, { params: { page } }).then(r => r.data),
+  getToken:          (addr: string)           => API.get(`/tokens/${addr}`).then(r => r.data),
+  getTokenHolders:   (addr: string)           => API.get(`/tokens/${addr}/holders`, { timeout: 120000 }).then(r => r.data),
+  getTokenHolderStatus: (addr: string)        => API.get(`/tokens/${addr}/holders/status`).then(r => r.data),
+  getTokenTransfers: (addr: string, page = 1) => API.get(`/tokens/${addr}/transfers`, { params: { page } }).then(r => r.data),
 
   // Wallet
   getWallet:         (addr: string)           => API.get(`/wallet/${addr}`).then(r => r.data),
