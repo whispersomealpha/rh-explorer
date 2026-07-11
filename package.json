@@ -1,0 +1,11 @@
+{
+  "name": "rh-explorer",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:api": "yarn workspace @rh-explorer/api dev",
+    "dev:frontend": "yarn workspace @rh-explorer/frontend dev",
+    "build:api": "yarn workspace @rh-explorer/api build",
+    "build:frontend": "yarn workspace @rh-explorer/frontend build"
+  }
+}

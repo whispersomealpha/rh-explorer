@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@rh-explorer/types": ["../../packages/types/index.ts"],
+      "@rh-explorer/abi": ["../../packages/abi/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "../../packages/**/*"]
+}
