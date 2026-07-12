@@ -228,6 +228,7 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                         {hasPnL && <th>Txs</th>}
                         {hasPnL && <th>First Buy</th>}
                         {hasPnLPct && <th>PnL</th>}
+                        <th>ETH Balance</th>
                         <th>Bar</th>
                         <th>Investigate</th>
                       </tr>
@@ -278,6 +279,13 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                                   : <span className="text-rh-muted text-xs">—</span>}
                               </td>
                             )}
+                            <td>
+                              <span className="mono text-xs text-rh-muted">
+                                {h.ethBalance && h.ethBalance !== '0'
+                                  ? `${(Number(BigInt(h.ethBalance)) / 1e18).toFixed(4)} ETH`
+                                  : '—'}
+                              </span>
+                            </td>
                             {hasPnLPct && (
                               <td>
                                 {h.pnlPct != null ? (

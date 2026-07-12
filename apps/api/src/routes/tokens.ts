@@ -3,6 +3,7 @@ import { getHolderList, getTokenInfo } from '../services/token.service'
 import { getTokenTransfers } from '../lib/blockscout'
 import { cache } from '../lib/cache'
 import { getCurrentTokenPrice, calculateHolderPnL, batchHolderPnL } from '../services/pnl.service'
+import { rhProvider } from '../lib/providers'
 
 export async function tokenRoutes(app: FastifyInstance) {
 
@@ -39,6 +40,23 @@ export async function tokenRoutes(app: FastifyInstance) {
       const price = await getCurrentTokenPrice(address)
       const decimals = result.tokenInfo.decimals
 
+      // Fetch ETH balances for all holders in batches of 20
+      const ethBalances: Record<string, string> = {}
+      const BATCH = 20
+      for (let i = 0; i < result.holders.length; i += BATCH) {
+        const batch = result.holders.slice(i, i + BATCH)
+        const balances = await Promise.allSettled(
+          batch.map((h: any) => rhProvider.getBalance(h.address))
+        )
+        batch.forEach((h: any, j: number) => {
+          const r = balances[j]
+          ethBalances[h.address.toLowerCase()] = r.status === 'fulfilled'
+            ? r.value.toString()
+            : '0'
+        })
+        if (i + BATCH < result.holders.length) await new Promise(r => setTimeout(r, 50))
+      }
+
       // Auto-compute PnL for top 50 holders and embed in response
       const top50 = result.holders.slice(0, 50)
       let pnlMap: Record<string, any> = {}
@@ -58,6 +76,7 @@ export async function tokenRoutes(app: FastifyInstance) {
         const pnl = pnlMap[h.address.toLowerCase()]
         return {
           ...h,
+          ethBalance: ethBalances[h.address.toLowerCase()] ?? '0',
           valueUsd: pnl?.currentValueUsd ?? (price != null ? h.balanceFormatted * price : null),
           tradeCount: pnl?.tradeCount ?? null,
           firstBuyTimestamp: pnl?.firstBuyTimestamp ?? null,
