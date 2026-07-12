@@ -227,8 +227,8 @@ export default function TokenPage({ params }: { params: { address: string } }) {
                         {priceUsd && <th>Value (USD)</th>}
                         {hasPnL && <th>Txs</th>}
                         {hasPnL && <th>First Buy</th>}
-                        {hasPnLPct && <th>PnL</th>}
                         <th>ETH Balance</th>
+                        {hasPnLPct && <th>PnL</th>}
                         <th>Bar</th>
                         <th>Investigate</th>
                       </tr>
