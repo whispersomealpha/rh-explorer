@@ -38,6 +38,7 @@ async function main() {
   await app.register(tokenRoutes,  { prefix: '/api' })
   await app.register(walletRoutes, { prefix: '/api' })
   await app.register(searchRoutes, { prefix: '/api' })
+  await app.register(investigateRoutes, { prefix: '/api' })
 
   const port = parseInt(process.env.PORT ?? '3001')
   await app.listen({ port, host: '0.0.0.0' })
