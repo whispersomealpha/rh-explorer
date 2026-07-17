@@ -6,6 +6,7 @@ import { blocksRoutes } from './routes/blocks'
 import { tokenRoutes } from './routes/tokens'
 import { walletRoutes } from './routes/wallet'
 import { searchRoutes } from './routes/search'
+import { investigateRoutes } from './routes/investigate'
 
 const app = Fastify({ logger: false })
 

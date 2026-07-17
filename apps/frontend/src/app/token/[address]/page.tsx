@@ -8,6 +8,29 @@ import { HolderTooltip } from '../../../components/HolderTooltip'
 const pageCache = new Map<string, { tokenInfo: any; holders: any[]; transfers: any[]; priceUsd: number | null; ts: number }>()
 const CACHE_TTL = 8 * 60 * 1000
 
+function exportCSV(holders: any[], tokenSymbol: string, top: number = 50) {
+  const rows = holders.slice(0, top).map((h: any) => [
+    h.rank,
+    h.address,
+    h.balanceFormatted.toFixed(4),
+    h.share.toFixed(4) + '%',
+    h.ethBalance && h.ethBalance !== '0' ? (Number(BigInt(h.ethBalance)) / 1e18).toFixed(6) : '0',
+    h.tradeCount ?? '',
+    h.firstBuyTimestamp ? new Date(h.firstBuyTimestamp * 1000).toISOString() : '',
+    h.valueUsd != null ? '$' + h.valueUsd.toFixed(2) : '',
+    h.pnlPct != null ? h.pnlPct.toFixed(2) + '%' : '',
+  ])
+  const header = ['Rank','Address','Balance','Share%','ETH Balance','Txs','First Buy','Value USD','PnL%']
+  const csv = [header, ...rows].map(r => r.join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `WALLET-holders-top${top}-${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function TokenPage({ params }: { params: { address: string } }) {
   const { address } = params
   const addr = address.toLowerCase()
@@ -195,6 +218,22 @@ export default function TokenPage({ params }: { params: { address: string } }) {
               {priceUsd && <option value="value">Sort by Value (USD)</option>}
               {hasPnL && <option value="txs">Sort by Activity</option>}
             </select>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => exportCSV(holders, tokenInfo?.symbol ?? 'token', 50)}
+                disabled={loadingHolders || holders.length === 0}
+                className="px-3 py-2 text-xs rounded-lg border border-rh-border text-rh-muted hover:text-rh-accent hover:border-rh-accent transition-colors disabled:opacity-40 whitespace-nowrap"
+              >
+                📥 Top 50 CSV
+              </button>
+              <button
+                onClick={() => exportCSV(holders, tokenInfo?.symbol ?? 'token', 500)}
+                disabled={loadingHolders || holders.length === 0}
+                className="px-3 py-2 text-xs rounded-lg border border-rh-border text-rh-muted hover:text-rh-accent hover:border-rh-accent transition-colors disabled:opacity-40 whitespace-nowrap"
+              >
+                📥 All CSV
+              </button>
+            </div>
           </div>
 
           {loadingHolders ? (
